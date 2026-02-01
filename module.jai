@@ -17,6 +17,7 @@ Current_Menu :: enum {
     GRAPHICS_SETTINGS;
     USER_SETTINGS;
     SOUND_SETTINGS;
+    NONE;
 }
 
 Windowed_Program :: struct {
@@ -120,7 +121,7 @@ render_main_menu :: (using wp : *Windowed_Program) {
     for rectangles array_add(*rects, get_rect_normalized(it, xx width, xx height));
 
     if button(rects[0], "start") {
-        // start your program here.
+        toggle_menu(wp);
     }
 
     if button(rects[1], "graphics settings") {
@@ -220,6 +221,16 @@ render_menus :: (using wp : *Windowed_Program) {
     }
 }
 
+toggle_menu :: (using wp : *Windowed_Program) {
+    if (current_menu == .NONE) {
+        current_menu = .MAIN;
+        show_cursor();
+    } else {
+        current_menu = .NONE;
+        hide_cursor();
+    }
+}
+
 Camera_Mode :: enum {
     FIRST_PERSON;
     THIRD_PERSON;
@@ -264,7 +275,37 @@ init :: (using wp3 : *Windowed_Program_3D) {
     init(*per_object_transform_renderer);
 }
 
+set_mouse_pointer_position :: inline (x : int, y : int) {
+	#if OS == .WINDOWS {
+		// Windows module does not have SetCursorPos
+		// win32 :: #import "Windows";
+		// win32.SetCursorPos (xx x, xx y);
+		// Hugh...
+		user32 :: #system_library "User32";
+		SetCursorPos :: (x : s32, y : s32) -> s32 #foreign user32;
+		SetCursorPos (xx x, xx y);
+	} else {
+		// @Todo!
+	}
+}
+
 per_frame_update :: (using wp3 : *Windowed_Program_3D, delta_time : float) {
+
+    per_frame_update(*wp3.wp);
+
+    if (current_menu == .NONE) {
+        #if OS == .WINDOWS {
+            // so that the cursor doesn't fall off the screen.
+            x, y, w, h := get_dimensions(window, right_handed_mouse_position);
+            set_mouse_pointer_position (w / 2, h / 2);
+            update_angles_with_deltas(*camera, Input.mouse_delta_x, Input.mouse_delta_y);
+        } else {
+            // don't yet have ability to hide cursor properly on linux
+            x, y, success := get_mouse_pointer_position(window, right_handed_mouse_position); 
+            if success update_angles(*camera, x, y);
+        }
+    }
+
 
     x, y, success := get_mouse_pointer_position(window, right_handed_mouse_position); 
     if success update_angles(*camera, x, y);
