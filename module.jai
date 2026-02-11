@@ -1,7 +1,11 @@
+
+// usage of this engine is at the bottom of the file
+
 #import "Window_Creation";
 #import "Math";
 #import "Basic";
 #import "GL";
+Sound :: #import "Sound_Player";
 
 #scope_file
 Simp :: #import "Simp";
@@ -15,6 +19,7 @@ Input :: #import "Input";
 #import "tbx/movement";
 #import "tbx/rectangle";
 #import "tbx/time";
+#import "tbx/math";
 
 Current_Menu :: enum {
     MAIN;
@@ -23,6 +28,16 @@ Current_Menu :: enum {
     SOUND_SETTINGS;
     NONE;
 }
+
+/*
+
+In the beginning you want results, in the end all you want is control. - Eskil Steenburg
+
+This "engine" is for when all you want is results, designed modularly enough so that when you want control you can lop off pieces of it incrementally.
+
+There are some things which are genuinely useful all the time such as the looping program so that you don't have to compute a delta time yourself every frame.
+
+*/
 
 Looping_Program :: struct {
     end_program := false;
@@ -35,10 +50,23 @@ Looping_Program :: struct {
 
     tick_timer : Periodic_Timer;
 
+    current_time_sec : float = 0;
+
     current_frame_start : Apollo_Time;
     delta_time :float; 
 }
 
+
+/*
+
+A windowed program is a program that has a window and assume that you're going to use GetRect and Simp to do ui stuff. You can still bring your own rendering.
+
+The point of it is that when you make a new program you don't have to remember which per-frame updates you need to call
+and instead you can just focus on making the program happen instead of the boilerplate you would normally write at the start of a new program.
+
+In the future it might be good to have one that doesn't rely on GetRect but for now it seems totally fine.
+
+*/
 Windowed_Program :: struct {
 
     using # as lp : Looping_Program;
@@ -84,10 +112,19 @@ init :: (using wp: *Windowed_Program) {
     proc := default_theme_procs[current_theme];
     my_theme = proc();
     set_default_theme(my_theme); 
-    min_frame_time = 1.0 / max_fps;
-    // we're just setting it to this so the first iteration has a value.
-    delta_time = min_frame_time;
     set_vsync(vsync);
+
+    // NOTE: if you try and do this before the windows opens, it messes up and only plays sounds when the window is hidden
+    // this probably occurs because the sound player has a default of turning off the audio when you alt-tab, and that logic gets
+    // accidentally inverted.
+    if !Sound.sound_player_init(.{}) {
+        print("Failed to initialize sound player!\n");
+        // return;
+    }
+}
+
+deinit :: (using wp: *Windowed_Program) {
+    Sound.sound_player_shutdown();
 }
 
 // it's important to note that this can be called on windowed program or windowed program 3d 
@@ -113,15 +150,39 @@ sleep_to_maintain_max_fps :: (using wp: *Windowed_Program) {
 mark_frame_end :: (using lp: *Looping_Program) {
     frame_end := current_time_monotonic();
     delta_time = cast (float) to_float64_seconds(frame_end - current_frame_start);
+    current_time_sec += delta_time;
 }
 
 per_frame_update :: (using lp: *Looping_Program) {
     mark_cycle(*tick_timer);
 }
 
-per_frame_update :: (using wp: *Windowed_Program) {
 
+
+per_frame_update :: (using wp: *Windowed_Program) {
     per_frame_update(*lp);
+
+    Input.update_window_events();
+    for Input.events_this_frame {
+        // getrect_handle_event(it);
+
+        if it.type == .QUIT then end_program = true;
+        if it.type == {
+          case .KEYBOARD;
+            if it.key_pressed && it.key_code == .ESCAPE end_program = true;
+        }
+    }
+
+    for Input.get_window_resizes() {
+        Simp.update_window(it.window);  
+        if it.window == window {
+            resolution_has_changed := (it.width != window_width) || (it.height != window_height);
+            if (resolution_has_changed) {
+                window_width  = it.width;
+                window_height = it.height;
+            }
+        }
+    }
 
     apollo_current_time := current_time_consensus();
     current_time := to_float64_seconds(apollo_current_time);
@@ -338,10 +399,60 @@ is_key_just_pressed :: inline (key : Input.Key_Code) -> bool #must {
 	return (Input.input_button_states[cast (s64) key] & .START) != 0;
 }
 
+/*
+
+A windowed program 3d is something you can use to get to rendering things on the screen fast
+
+*/
+
+// this should be moved to its own file because it seems kinda important for some reason.
+
+Orientation :: struct {
+    forward: Vector3;
+    right: Vector3;
+    up: Vector3;
+}
+
+// #running away from our problems
+STANDARD_ORIENTATION :: #run Orientation.{X3, -Y3, Z3};
+GL_ORIENTATION :: Orientation.{Z3, X3, Y3};
+NEGATIVE_Z_GL_ORIENTATION :: #run Orientation.{-Z3, X3, Y3};
+
 Windowed_Program_3D :: struct {
 
     using #as wp : Windowed_Program;
 
+    orientation := STANDARD_ORIENTATION;
+
+    /*
+    the reasoning for this choice is as follows. 
+    - We are humans, at rest we look forward, the easiest direction to move is forward, in order to move or look left or right, it takes extra effort, additionally looking up is even more difficult.
+    - Because of that it makes sense to map the first direction, so we pick e1/x/(1, 0, 0) to represent forward. 
+    - In two dimensions cos and sin rotate counter clockwise as theta increases (see the turns module for more details)
+    - Thus if we follow the rotation of cos/sin then we eventually get to e2/y/(0, 1, 0), so the default cartesian plane has right handedness baked into it
+    - If x is forward, then that means y is left based on the previous line, so -y would be right
+    - Once you have x and y, you add z, if you add z and make it down then the basis is left handed, which changes from the 2d basis, so it's less confusing to not do that
+    - So we make z up.
+    */
+
+    /*
+
+    The basis E = (e1, e2, 3) is right handed, the reason why is because we defined our 3d grid system in a way such that the right hand rule works on it ie 
+    y was placed counter clockwise to x and z counterclockwise to y. This is why we can call this right handed in the first place. If we had not made our grid system like this
+    then it wouldn't be called right handed anymore.
+
+    Alternatively if we claimed that the basis E = (e1, e2, e3) is right handed, then it would force our axes to be lined up in some way to make sure that its true. 
+    We can see that either way this is just a convention to make things work.
+
+    Given two bases B = (b1, b2, b3) and C = (c1, c2, c3) then we can determine if C is the same handedness of B by writing the basis vectors c1, c2, c3 in the B basis to obtain
+    C' = (j1, j2, j3) and then using a the standard procedure to determine of B and C' are of the same handedness.
+
+    Additionally the basis (e1, e2, e3) can be thought of as (forward, left, up) because of the previous talk. So we can ask ourselves if the basis (-e3, -e1, e2) is right handed
+    and yes it is because if you rotate around e2 counter clockwise 90 degrees and then around z 90 degrees you get the second basis, and rotations don't change the handedness.
+
+    Concrete example we want to know if the basis given by 
+    */
+ 
     per_object_transform_renderer : Per_Object_Transform_Renderer;
     per_object_absolute_position_color_renderer : Per_Object_Absolute_Position_Color_Renderer;
 
@@ -352,6 +463,11 @@ Windowed_Program_3D :: struct {
     // only used if you want to use the default movement modes.
     camera_velocity : Vector3;
     movement_mode : Movement_Mode;
+
+    // you only use this when you're really not doing anything unique in your program and you're fine
+    // with the windowed program 3d handling the rendering of your objects so that you don't have to manually render
+    // most programs will outgrow this but it's nice at the start
+    object_indices_to_render : [..] u32;
 }
 
 init :: (using wp3 : *Windowed_Program_3D) {
@@ -373,6 +489,34 @@ set_mouse_pointer_position :: inline (x : int, y : int) {
 		// @Todo!
 	}
 }
+
+format_vec3 :: (v: Vector3, decimals: int = 2) -> string {
+    return tprint("(%, %, %)",
+        FormatFloat.{value=v.x, trailing_width=decimals, zero_removal=.NO},
+        FormatFloat.{value=v.y, trailing_width=decimals, zero_removal=.NO},
+        FormatFloat.{value=v.z, trailing_width=decimals, zero_removal=.NO});
+}
+
+render_movement_stats :: (using wp3 : *Windowed_Program_3D) {
+    label_theme := my_theme.label_theme;
+    rect_height := 0.1;
+    rect_width := 0.4;
+    r_pos := get_rect_normalized(create_rectangle(-1, 1, rect_width, rect_height, .TOP_LEFT), xx window_width, xx window_height);
+    r_vel := get_rect_normalized(create_rectangle(-1, 1 - rect_height, rect_width, rect_height, .TOP_LEFT), xx window_width, xx window_height);
+
+    label(r_pos, format_vec3(camera.position), *label_theme);
+    label(r_vel, format_vec3(camera_velocity), *label_theme);
+}
+
+render_camera_stats :: (using wp3 : *Windowed_Program_3D) {
+    label_theme := my_theme.label_theme;
+    rect_height := 0.1;
+    rect_width := 0.4;
+    r := get_rect_normalized(create_rectangle(-1, -1, rect_width, rect_height, .BOTTOM_LEFT), xx window_width, xx window_height);
+
+    label(r, format_vec3(get_forward(*camera)), *label_theme);
+}
+
 
 keep_mouse_in_center_of_screen :: (using wp: *Windowed_Program) {
     #if OS == .WINDOWS {
@@ -399,7 +543,6 @@ per_frame_update :: (using wp3 : *Windowed_Program_3D) {
     }
 
 
-
     x, y, success := get_mouse_pointer_position(window, right_handed_mouse_position); 
     if success update_angles(*camera, x, y);
 
@@ -421,13 +564,37 @@ per_frame_update :: (using wp3 : *Windowed_Program_3D) {
                 is_key_down (xx #char "S"),
                 is_key_down (xx #char "D"),
                 is_key_down (xx #char "A"),
-                is_key_down (xx #char "V"),
+                is_key_down (xx #char " "),
                 is_key_down (Input.Key_Code.SHIFT),
             }; 
 
+
+            // log("doing god with delta time: %", delta_time);
             camera_velocity = get_new_god_mode_velocity(camera_velocity , get_forward(*camera), gmi, delta_time);
     }
+
     if movement_mode != .MANUAL camera.position += camera_velocity * delta_time;
+
+
+    yaw_quat: Quaternion;
+    set_from_axis_and_angle(*yaw_quat, 0, 0, 1, -camera.yaw);
+
+    rotation_y: Quaternion;
+    set_from_axis_and_angle(*rotation_y, 0, 1, 0, PI/2);
+    
+    rotation_z: Quaternion;
+    set_from_axis_and_angle(*rotation_z, 0, 0, 1, PI/2);
+
+    // our objects position in the sound system adheres to NEGATIVE_Z_GL_ORIENTATION
+    // listener position assume the STANDARD_ORIENTATION so we have to correct it or else
+    // it going to think left right and up down are reversed, here' we're making our yaw into pitch
+    // todo probably better to put the positions in the right way no? yeah, but this works right now change later if needed.
+    correction_quat := rotation_z * rotation_y;
+
+    listener_orientation := yaw_quat * correction_quat;
+
+    Sound.update_listener(camera.position, listener_orientation);
+    Sound.update(delta_time);
 
     glUseProgram(per_object_transform_renderer.shader_program_gl_handle);
 
@@ -438,6 +605,43 @@ per_frame_update :: (using wp3 : *Windowed_Program_3D) {
     glUniformMatrix4fv(glGetUniformLocation(per_object_transform_renderer.shader_program_gl_handle, "world_to_camera"), num_matrices_we_are_updating, row_major, *camera.world_to_camera.coef[0][0]);
     glUniformMatrix4fv(glGetUniformLocation(per_object_transform_renderer.shader_program_gl_handle, "camera_to_clip"), num_matrices_we_are_updating, row_major, *camera.camera_to_clip.coef[0][0]);
 
+}
+
+// this is what you call when you really don't care about control yet, you're just like I want geometry on the screen now and I want menus 
+// and I don't want to care about graphics or anything, but I'm just testing some sort of minimal 3d program and that's all. 
+// most people would only ever call this when they're doing basic experimentation and graphics is not the point of the program.
+// this function provides a good starting point to see how to integrate simp and your own rendering logic.
+render_scene :: (using wp3 : *Windowed_Program_3D) {
+
+    for object_indices_to_render queue_render(*wp3.per_object_transform_renderer, it);
+
+    Simp.update_window(wp3.window);
+    Simp.clear_render_target(.15, .08, .08, 1);
+
+    if (wp3.current_menu == .NONE) {
+        // re-enable depth testing for 3d rendering without these lines depth is messed up, this is because simp disables it probably, look into this later when caring more
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        render(*wp3.per_object_transform_renderer);
+
+        context.simp.current_shader = null; 
+        // rendering these things should be optional at somepoint but it seems useful for now.
+        render_tick_stats(wp3); // shouldn't this be a pointer?
+        render_movement_stats(wp3);
+        render_camera_stats(wp3);
+    } else {
+        // when you render with your own custom rendering it clobbers the opengl global state or at least would use the program and then set the program to be empty
+        // either way simp internally keeps track of the last shader it used and it would be the same as last draw, it doesn't have to re-bind the shader
+        // this is fine in the context of simp but with your own rendering it messes up this state causing simp to not rebind a shader when it should
+        // by setting this to null it forces simp to rebind all the shaders it needs
+        context.simp.current_shader = null; 
+        render_menus(*wp3.wp);
+    }
+
+
+    // swap_buffers(windowed_program_3d.window, windowed_program_3d.vsync);
+    Simp.swap_buffers(wp3.window, false);
 }
 
 show_cursor :: inline () {
@@ -460,3 +664,58 @@ hide_cursor :: inline () {
 
 
 
+/*
+
+The way you use this "engine" can be as modular as you want. If you want to do pretty much everything yourself then you can just grab Looping_Program so that you have a loop which
+runs at a controlled rate. That can look something like this: 
+
+On the other hand, a good reason to use this engine is that it allows you to start rendering objects immediately. If you're new to jai, then this is like getting the key to the castle.
+And so you can start focusing on making a game or something immediately, which is great overtime you'll explore the rooms of the castle and understand its layout. 
+Eventually you'll want to to do something that doesn't exist in the castle, and then you can start moving away from it. Either way here is the highest level of support we currently give:
+
+#import "Basic";
+#import "Math";
+#import "System";
+
+#import "tbx/engine";
+#import "tbx/opengl";
+#import "tbx/geometry";
+Input :: #import "Input";
+Simp :: #import "Simp";
+
+#import "GL";
+
+main :: () {
+	// This is here because on Windows, segfaults and stuff are silent.
+	// If the program ends without printing this message, then something bad happened.
+	defer print ("Program ended gracefully, if you stop seeing this then something bad happend.\n");
+
+
+    wp3 : Windowed_Program_3D;
+    wp3.vsync = false;
+    wp3.movement_mode = .GOD;
+    wp3.window_name = "my_program";
+    init(*wp3);
+
+
+    box := create_itpc_with_color_variation(create_box());    
+    box_render_index, box_local_to_world_index := buffer_object(*wp3.per_object_transform_renderer, box.indices, box.positions, box.rgb_colors);
+    wp3.per_object_transform_renderer.local_to_world_matrices[box_local_to_world_index] = make_translation_matrix4(.{1, 1, 1});
+
+    array_add(*wp3.object_indices_to_render, box_render_index);
+
+    while !wp3.end_program {
+        mark_frame_start(*wp3);
+        
+        per_frame_update(*wp3);
+
+        render_scene(*wp3);
+
+        sleep_to_maintain_max_fps(*wp3);
+        mark_frame_end(*wp3);
+    }
+}
+
+In this system you can just create new geometry and modify the transform of objects. Very minimal but at least you don't have to write 500 lines of boilerplate to make it happen.
+
+*/
