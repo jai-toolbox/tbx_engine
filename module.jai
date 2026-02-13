@@ -5,9 +5,9 @@
 #import "Math";
 #import "Basic";
 #import "GL";
-Sound :: #import "Sound_Player";
 
 #scope_file
+Sound :: #import "Sound_Player";
 Simp :: #import "Simp";
 Input :: #import "Input";
 #scope_export
@@ -82,8 +82,6 @@ Windowed_Program :: struct {
     current_menu := Current_Menu.MAIN;
 
     vsync := false;
-
-    // when vsync is active, none of the following things come into effect vvv
 
     fullscreen := false;
 
@@ -164,7 +162,7 @@ per_frame_update :: (using wp: *Windowed_Program) {
 
     Input.update_window_events();
     for Input.events_this_frame {
-        // getrect_handle_event(it);
+        getrect_handle_event(it);
 
         if it.type == .QUIT then end_program = true;
         if it.type == {
@@ -192,6 +190,9 @@ per_frame_update :: (using wp: *Windowed_Program) {
 }
 
 set_fullscreen :: (using wp: *Windowed_Program, enabled : bool) {
+
+    if enabled == fullscreen return; // nothing happens cause it's already how you want.
+
     saved_window_info.rect.left = 0;
     saved_window_info.rect.top = 0;
     saved_window_info.rect.bottom = window_width;
@@ -200,6 +201,7 @@ set_fullscreen :: (using wp: *Windowed_Program, enabled : bool) {
     // todo need to do somethign with these values right?
     success, new_width, new_height := toggle_fullscreen(window, enabled, *saved_window_info);
     fullscreen = enabled;
+    set_vsync(vsync);
 }
 
 enable_fullscreen :: (using wp: *Windowed_Program) {
