@@ -178,6 +178,8 @@ per_frame_update :: (using wp: *Windowed_Program) {
                     case .DELETE;       ui_push_key(.DELETE);
                     case .ARROW_LEFT;   ui_push_key(.LEFT);
                     case .ARROW_RIGHT;  ui_push_key(.RIGHT);
+                    case .ARROW_UP;     ui_push_key(.UP);
+                    case .ARROW_DOWN;   ui_push_key(.DOWN);
                     case .HOME;         ui_push_key(.HOME);
                     case .END;          ui_push_key(.END);
                     case .ENTER;        ui_push_key(.ENTER);
