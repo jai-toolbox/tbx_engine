@@ -185,6 +185,12 @@ per_frame_update :: (using wp: *Windowed_Program) {
                     case .ENTER;        ui_push_key(.ENTER);
                     case .ESCAPE;       ui_push_key(.ESCAPE);
                     case .TAB;          ui_push_key(.TAB);
+                    case xx #char "A";  ui_push_key(.A);
+                    case xx #char "C";  ui_push_key(.C);
+                    case xx #char "V";  ui_push_key(.V);
+                    case xx #char "X";  ui_push_key(.X);
+                    case xx #char "Y";  ui_push_key(.Y);
+                    case xx #char "Z";  ui_push_key(.Z);
                 }
             }
             ui_ctrl_held  = it.ctrl_pressed;
