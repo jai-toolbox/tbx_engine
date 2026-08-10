@@ -185,8 +185,10 @@ per_frame_update :: (using wp: *Windowed_Program) {
                     case .ENTER;        ui_push_key(.ENTER);
                     case .ESCAPE;       ui_push_key(.ESCAPE);
                     case .TAB;          ui_push_key(.TAB);
+                    case xx #char " ";  ui_push_key(.SPACE);
                     case xx #char "A";  ui_push_key(.A);
                     case xx #char "C";  ui_push_key(.C);
+                    case xx #char "F";  ui_push_key(.F);
                     case xx #char "V";  ui_push_key(.V);
                     case xx #char "X";  ui_push_key(.X);
                     case xx #char "Y";  ui_push_key(.Y);
@@ -208,6 +210,10 @@ per_frame_update :: (using wp: *Windowed_Program) {
             else if it.wheel_delta < 0 ui_scroll_y -= 1.0;
         }
     }
+
+    // Poll held modifiers too; mouse-only frames will not carry keyboard events.
+    ui_ctrl_held  = (Input.input_button_states[Input.Key_Code.CTRL]  & .DOWN) != 0;
+    ui_shift_held = (Input.input_button_states[Input.Key_Code.SHIFT] & .DOWN) != 0;
 
     // gather mouse button state
     ui_mouse_left_down  = (Input.input_button_states[Input.Key_Code.MOUSE_BUTTON_LEFT]  & .DOWN) != 0;
