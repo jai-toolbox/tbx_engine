@@ -174,25 +174,25 @@ per_frame_update :: (using wp: *Windowed_Program) {
         if it.type == .KEYBOARD {
             if it.key_pressed {
                 if it.key_code == {
-                    case .BACKSPACE;    ui_push_key(.BACKSPACE);
-                    case .DELETE;       ui_push_key(.DELETE);
-                    case .ARROW_LEFT;   ui_push_key(.LEFT);
-                    case .ARROW_RIGHT;  ui_push_key(.RIGHT);
-                    case .ARROW_UP;     ui_push_key(.UP);
-                    case .ARROW_DOWN;   ui_push_key(.DOWN);
-                    case .HOME;         ui_push_key(.HOME);
-                    case .END;          ui_push_key(.END);
-                    case .ENTER;        ui_push_key(.ENTER);
-                    case .ESCAPE;       ui_push_key(.ESCAPE);
-                    case .TAB;          ui_push_key(.TAB);
-                    case xx #char " ";  ui_push_key(.SPACE);
-                    case xx #char "A";  ui_push_key(.A);
-                    case xx #char "C";  ui_push_key(.C);
-                    case xx #char "F";  ui_push_key(.F);
-                    case xx #char "V";  ui_push_key(.V);
-                    case xx #char "X";  ui_push_key(.X);
-                    case xx #char "Y";  ui_push_key(.Y);
-                    case xx #char "Z";  ui_push_key(.Z);
+                    case .BACKSPACE;    ui_push_key(.BACKSPACE, it.ctrl_pressed, it.shift_pressed);
+                    case .DELETE;       ui_push_key(.DELETE, it.ctrl_pressed, it.shift_pressed);
+                    case .ARROW_LEFT;   ui_push_key(.LEFT, it.ctrl_pressed, it.shift_pressed);
+                    case .ARROW_RIGHT;  ui_push_key(.RIGHT, it.ctrl_pressed, it.shift_pressed);
+                    case .ARROW_UP;     ui_push_key(.UP, it.ctrl_pressed, it.shift_pressed);
+                    case .ARROW_DOWN;   ui_push_key(.DOWN, it.ctrl_pressed, it.shift_pressed);
+                    case .HOME;         ui_push_key(.HOME, it.ctrl_pressed, it.shift_pressed);
+                    case .END;          ui_push_key(.END, it.ctrl_pressed, it.shift_pressed);
+                    case .ENTER;        ui_push_key(.ENTER, it.ctrl_pressed, it.shift_pressed);
+                    case .ESCAPE;       ui_push_key(.ESCAPE, it.ctrl_pressed, it.shift_pressed);
+                    case .TAB;          ui_push_key(.TAB, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char " ";  ui_push_key(.SPACE, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "A";  ui_push_key(.A, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "C";  ui_push_key(.C, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "F";  ui_push_key(.F, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "V";  ui_push_key(.V, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "X";  ui_push_key(.X, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "Y";  ui_push_key(.Y, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char "Z";  ui_push_key(.Z, it.ctrl_pressed, it.shift_pressed);
                 }
             }
             ui_ctrl_held  = it.ctrl_pressed;
