@@ -1641,6 +1641,9 @@ Windowed_Program_3D :: struct {
     is_dragging := false;
     drag_start_mouse : Vector2;
     drag_start_center : Vector2;
+
+    custom_hud_proc: (user_data: *void);
+    custom_hud_data: *void;
 }
 
 init :: (using wp3 : *Windowed_Program_3D) {
@@ -2057,6 +2060,10 @@ render_scene :: (using wp3 : *Windowed_Program_3D) {
             render_camera_stats(wp3);
             render_iteration(wp3);
             ui_end_window();
+        }
+
+        if wp3.custom_hud_proc {
+            wp3.custom_hud_proc(wp3.custom_hud_data);
         }
 
         render_crosshair(*wp3.wp.base);
