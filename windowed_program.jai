@@ -58,6 +58,7 @@ Windowed_Program :: struct {
     ui_scroll_y:         float32;
     ui_ctrl_held:        bool;
     ui_shift_held:       bool;
+    ui_alt_held:         bool;
 }
 
 init :: (using wp: *Windowed_Program) {
@@ -146,6 +147,24 @@ update_centered_mouse_delta :: (using wp: *Windowed_Program) {
     }
 }
 
+poll_pointer_modifiers :: (using wp: *Windowed_Program) -> (ctrl: bool, shift: bool, alt: bool, ok: bool) {
+    #if OS == .LINUX {
+        X11 :: #import "X11";
+        root, child: X11.Window;
+        root_x, root_y, window_x, window_y: s32;
+        modifier_mask: u32;
+        query_ok := X11.XQueryPointer(X11.x_global_display, window, *root, *child, *root_x, *root_y, *window_x, *window_y, *modifier_mask);
+        if query_ok == X11.True {
+            return (modifier_mask & X11.ControlMask) != 0,
+                   (modifier_mask & X11.ShiftMask) != 0,
+                   (modifier_mask & X11.Mod1Mask) != 0,
+                   true;
+        }
+    }
+
+    return false, false, false, false;
+}
+
 
 
 get_window_dimensions_vector :: (using wp : *Windowed_Program) -> Vector2 {
@@ -165,6 +184,7 @@ per_frame_update :: (using wp: *Windowed_Program) {
     ui_scroll_y = 0;
     ui_ctrl_held = false;
     ui_shift_held = false;
+    ui_alt_held = false;
 
     Input.update_window_events();
     for Input.events_this_frame {
@@ -197,6 +217,7 @@ per_frame_update :: (using wp: *Windowed_Program) {
             }
             ui_ctrl_held  = it.ctrl_pressed;
             ui_shift_held = it.shift_pressed;
+            ui_alt_held   = it.alt_pressed;
         }
 
         if it.type == .TEXT_INPUT {
@@ -214,18 +235,45 @@ per_frame_update :: (using wp: *Windowed_Program) {
     // Poll held modifiers too; mouse-only frames will not carry keyboard events.
     ui_ctrl_held  = (Input.input_button_states[Input.Key_Code.CTRL]  & .DOWN) != 0;
     ui_shift_held = (Input.input_button_states[Input.Key_Code.SHIFT] & .DOWN) != 0;
+    ui_alt_held   = (Input.input_button_states[Input.Key_Code.ALT]   & .DOWN) != 0;
+
+    // X11 can lose a modifier release when the window manager grabs an
+    // Alt/Shift gesture. For wheel input, query the pointer's live modifier
+    // mask so a stale cached key cannot lock scrolling to the wrong axis.
+    if ui_scroll_y != 0 {
+        live_ctrl, live_shift, live_alt, modifiers_ok := poll_pointer_modifiers(wp);
+        if modifiers_ok {
+            ui_ctrl_held = live_ctrl;
+            ui_shift_held = live_shift;
+            ui_alt_held = live_alt;
+
+            if live_ctrl  Input.input_button_states[Input.Key_Code.CTRL]  |= .DOWN;
+            else          Input.input_button_states[Input.Key_Code.CTRL]  &= ~Input.Key_Current_State.DOWN;
+            if live_shift Input.input_button_states[Input.Key_Code.SHIFT] |= .DOWN;
+            else          Input.input_button_states[Input.Key_Code.SHIFT] &= ~Input.Key_Current_State.DOWN;
+            if live_alt   Input.input_button_states[Input.Key_Code.ALT]   |= .DOWN;
+            else          Input.input_button_states[Input.Key_Code.ALT]   &= ~Input.Key_Current_State.DOWN;
+        }
+    }
 
     // gather mouse button state
     ui_mouse_left_down  = (Input.input_button_states[Input.Key_Code.MOUSE_BUTTON_LEFT]  & .DOWN) != 0;
     ui_mouse_right_down = (Input.input_button_states[Input.Key_Code.MOUSE_BUTTON_RIGHT] & .DOWN) != 0;
 
-    ui_set_modifiers(ui_ctrl_held, ui_shift_held);
+    ui_set_modifiers(ui_ctrl_held, ui_shift_held, ui_alt_held);
 
     // detect focus transitions
     old_focus := window_has_focus;
     window_has_focus = Input.input_application_has_focus;
 
     if old_focus && !window_has_focus {
+        Input.input_button_states[Input.Key_Code.CTRL] = .NONE;
+        Input.input_button_states[Input.Key_Code.SHIFT] = .NONE;
+        Input.input_button_states[Input.Key_Code.ALT] = .NONE;
+        ui_ctrl_held = false;
+        ui_shift_held = false;
+        ui_alt_held = false;
+        ui_set_modifiers(false, false, false);
         show_cursor(wp);
         if fullscreen {
 
