@@ -59,6 +59,8 @@ Windowed_Program :: struct {
     ui_ctrl_held:        bool;
     ui_shift_held:       bool;
     ui_alt_held:         bool;
+    ui_shift_chord_down: bool;
+    ui_shift_chord_clean: bool;
 }
 
 init :: (using wp: *Windowed_Program) {
@@ -165,6 +167,30 @@ poll_pointer_modifiers :: (using wp: *Windowed_Program) -> (ctrl: bool, shift: b
     return false, false, false, false;
 }
 
+ui_shift_chord_handle_key_event :: (down: *bool, clean: *bool, key_code: Input.Key_Code, key_pressed: bool, shift_pressed: bool) -> bool {
+    clean_shift_space := key_pressed &&
+                         key_code == xx #char " " &&
+                         shift_pressed &&
+                         down.* &&
+                         clean.*;
+
+    if key_code == .SHIFT {
+        if key_pressed {
+            if !down.* clean.* = true;
+            down.* = true;
+        } else {
+            down.* = false;
+            clean.* = false;
+        }
+    } else if key_pressed && down.* {
+        // Shift+Space is deliberate only when Space is the first key pressed
+        // after Shift. Typing ':' consumes the chord before a following Space.
+        clean.* = false;
+    }
+
+    return clean_shift_space;
+}
+
 
 
 get_window_dimensions_vector :: (using wp : *Windowed_Program) -> Vector2 {
@@ -192,6 +218,13 @@ per_frame_update :: (using wp: *Windowed_Program) {
 
         // feed keyboard events to custom UI
         if it.type == .KEYBOARD {
+            clean_shift_chord := ui_shift_chord_handle_key_event(
+                *ui_shift_chord_down,
+                *ui_shift_chord_clean,
+                it.key_code,
+                it.key_pressed != 0,
+                it.shift_pressed);
+
             if it.key_pressed {
                 if it.key_code == {
                     case .BACKSPACE;    ui_push_key(.BACKSPACE, it.ctrl_pressed, it.shift_pressed);
@@ -205,7 +238,7 @@ per_frame_update :: (using wp: *Windowed_Program) {
                     case .ENTER;        ui_push_key(.ENTER, it.ctrl_pressed, it.shift_pressed);
                     case .ESCAPE;       ui_push_key(.ESCAPE, it.ctrl_pressed, it.shift_pressed);
                     case .TAB;          ui_push_key(.TAB, it.ctrl_pressed, it.shift_pressed);
-                    case xx #char " ";  ui_push_key(.SPACE, it.ctrl_pressed, it.shift_pressed);
+                    case xx #char " ";  ui_push_key(.SPACE, it.ctrl_pressed, it.shift_pressed, clean_shift_chord);
                     case xx #char "A";  ui_push_key(.A, it.ctrl_pressed, it.shift_pressed);
                     case xx #char "C";  ui_push_key(.C, it.ctrl_pressed, it.shift_pressed);
                     case xx #char "F";  ui_push_key(.F, it.ctrl_pressed, it.shift_pressed);
@@ -215,6 +248,7 @@ per_frame_update :: (using wp: *Windowed_Program) {
                     case xx #char "Z";  ui_push_key(.Z, it.ctrl_pressed, it.shift_pressed);
                 }
             }
+
             ui_ctrl_held  = it.ctrl_pressed;
             ui_shift_held = it.shift_pressed;
             ui_alt_held   = it.alt_pressed;
@@ -273,6 +307,8 @@ per_frame_update :: (using wp: *Windowed_Program) {
         ui_ctrl_held = false;
         ui_shift_held = false;
         ui_alt_held = false;
+        ui_shift_chord_down = false;
+        ui_shift_chord_clean = false;
         ui_set_modifiers(false, false, false);
         show_cursor(wp);
         if fullscreen {
