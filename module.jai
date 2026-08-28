@@ -113,15 +113,15 @@ attempt_to_connect_to_peer :: (host: *Network.Host, ip_address : string, port : 
     peer_we_are_connecting_to : *Network.Peer;
     connected := false;
 
-    address, address_ok := Network.get_host_ip_address(ip_address);
-    if !address_ok {
+    address: Network.Address;
+    if !Network.address_set_host_ip(*address, ip_address) {
         log_error("failed to resolve peer ip address '%'", ip_address);
         return null, false;
     }
 
     address.port = port;
 
-    peer_we_are_connecting_to = Network.host_request_connect(host, address, 3, 5);
+    peer_we_are_connecting_to = Network.host_request_connect(host, *address, 3, 5);
 
     event: Network.Event;
 
