@@ -2097,6 +2097,8 @@ sample_first_person_movement_input :: (forward := #char "W", backward := #char "
         key_pressed(xx right),
         key_pressed(xx left),
         key_pressed(xx jump),
+        key_pressed(Input.Key_Code.SHIFT),
+        key_pressed(Input.Key_Code.CTRL),
     };
 }
 
