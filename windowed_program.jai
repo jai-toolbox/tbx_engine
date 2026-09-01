@@ -52,6 +52,10 @@ Windowed_Program :: struct {
 
     sound_catalog : Table(u8, Sound_Player.Sound_Data);
 
+    // Applications that need to drive audio themselves can disable the
+    // background mixer before initialization.
+    sound_mixer_updates_on_background_thread := true;
+
     // mouse/keyboard state gathered per frame for the UI
     ui_mouse_left_down:  bool;
     ui_mouse_right_down: bool;
@@ -85,6 +89,7 @@ init :: (using wp: *Windowed_Program) {
     set_vsync(vsync);
 
     sound_config: Sound_Player.Sound_Player_Config;
+    sound_config.update_from_a_thread = sound_mixer_updates_on_background_thread;
     sound_config.seconds_to_fill_ahead = 0.10;
     if !Sound_Player.sound_player_init(sound_config) {
         print("Failed to initialize sound player!\n");
